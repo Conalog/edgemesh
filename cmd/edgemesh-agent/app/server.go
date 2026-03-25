@@ -169,13 +169,15 @@ func prepareRun(c *v1alpha1.EdgeMeshAgentConfig) error {
 		}
 	}
 
-	// Set dns and proxy modules listenInterface
-	err := netutil.CreateEdgeMeshDevice(c.CommonConfig.BridgeDeviceName, c.CommonConfig.BridgeDeviceIP)
-	if err != nil {
-		return fmt.Errorf("failed to create edgemesh device %s: %w", c.CommonConfig.BridgeDeviceName, err)
+	// Only create bridge device and set listen interfaces if DNS or Proxy is enabled
+	if c.Modules.EdgeDNSConfig.Enable || c.Modules.EdgeProxyConfig.Enable {
+		err := netutil.CreateEdgeMeshDevice(c.CommonConfig.BridgeDeviceName, c.CommonConfig.BridgeDeviceIP)
+		if err != nil {
+			return fmt.Errorf("failed to create edgemesh device %s: %w", c.CommonConfig.BridgeDeviceName, err)
+		}
+		c.Modules.EdgeDNSConfig.ListenInterface = c.CommonConfig.BridgeDeviceName
+		c.Modules.EdgeProxyConfig.ListenInterface = c.CommonConfig.BridgeDeviceName
 	}
-	c.Modules.EdgeDNSConfig.ListenInterface = c.CommonConfig.BridgeDeviceName
-	c.Modules.EdgeProxyConfig.ListenInterface = c.CommonConfig.BridgeDeviceName
 
 	// Set dns module KubeAPIConfig
 	c.Modules.EdgeDNSConfig.KubeAPIConfig = c.KubeAPIConfig
@@ -185,13 +187,17 @@ func prepareRun(c *v1alpha1.EdgeMeshAgentConfig) error {
 	if !exists {
 		return fmt.Errorf("env NODE_NAME not exist")
 	}
-	namespace, exists := os.LookupEnv("NAMESPACE")
-	if !exists {
-		return fmt.Errorf("env NAMESPACE not exist")
+
+	// Only set proxy-specific config if EdgeProxy is enabled
+	if c.Modules.EdgeProxyConfig.Enable {
+		namespace, exists := os.LookupEnv("NAMESPACE")
+		if !exists {
+			return fmt.Errorf("env NAMESPACE not exist")
+		}
+		c.Modules.EdgeProxyConfig.LoadBalancer.NodeName = nodeName
+		c.Modules.EdgeProxyConfig.Socks5Proxy.NodeName = nodeName
+		c.Modules.EdgeProxyConfig.Socks5Proxy.Namespace = namespace
 	}
-	c.Modules.EdgeProxyConfig.LoadBalancer.NodeName = nodeName
-	c.Modules.EdgeProxyConfig.Socks5Proxy.NodeName = nodeName
-	c.Modules.EdgeProxyConfig.Socks5Proxy.Namespace = namespace
 	c.Modules.EdgeTunnelConfig.NodeName = nodeName
 
 	// Set tunnel module mode
